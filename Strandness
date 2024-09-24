@@ -1,0 +1,13 @@
+#Set up the strandness for featurecounts
+# Illumina Stranded mRNA Prep:
+# The Illumina Stranded mRNA Prep protocol is a reverse-stranded protocol.
+# Therefore, when using featureCounts for RNA-seq quantification, you should use -s 2 for this protocol.
+
+#how to decide the strandness
+
+module load bedops
+gff2bed < gencode.v36.annotation.gtf > gencode.v36.annotation.bed
+
+module load rseqc
+infer_experiment.py -r /depot/edykhui/data/Caki2_ER_Stress_RNA_seq_2019/caki2_er_stress/2024reprocess/gencode.v36.annotation.bed \
+-i /depot/edykhui/data/ming/rna_seq/aligned/042373_ED1_S166_Aligned.sortedByCoord.out.bam
