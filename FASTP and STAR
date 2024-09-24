@@ -1,0 +1,60 @@
+#!/bin/bash
+#SBATCH -A pccr               # Allocation name
+#SBATCH -t 24:00:00           # Time limit
+#SBATCH -N 1                  # Number of nodes
+#SBATCH -n 24                 # Number of cores
+#SBATCH --job-name=RNAseq_pipeline
+#SBATCH --mail-type=FAIL,BEGIN,END
+#SBATCH --error=%x-%J-%u.err
+#SBATCH --output=%x-%J-%u.out
+
+# Load necessary modules
+module --force purge
+ml biocontainers fastp
+ml biocontainers star/2.7.10a
+
+# Directories
+FASTQ_DIR="/depot/edykhui/data/Caki2_ER_Stress_RNA_seq_2019/caki2_er_stress/data_er"
+FILTERED_DIR="/depot/edykhui/data/ming/rna_seq/filtered"
+ALIGN_DIR="/depot/edykhui/data/ming/rna_seq/aligned"
+REF_GENOME_DIR="/depot/edykhui/data/ming/genome_index_STAR"
+
+# Create necessary directories
+mkdir -p $FILTERED_DIR
+mkdir -p $ALIGN_DIR
+
+# List of sample pairs
+SAMPLES=("042373_ED1_S166" "042374_ED2_S167" "042375_ED3_S168" "042376_EB1_S169" "042377_EB2_S170" "042378_EB3_S171"
+         "042379_PD1_S172" "042380_PD2_S173" "042381_PD3_S174" "042382_PB1_S175" "042383_PB2_S176" "042384_PB3_S177")
+
+# Loop through each sample
+for SAMPLE in "${SAMPLES[@]}"
+do
+    # Set input FASTQ files
+    FASTQ_R1="$FASTQ_DIR/${SAMPLE}_R1_filtered.fastq.gz"
+    FASTQ_R2="$FASTQ_DIR/${SAMPLE}_R2_filtered.fastq.gz"
+
+    # Output names for fastp filtered files
+    FILTERED_R1="$FILTERED_DIR/${SAMPLE}_R1_filtered.fastq.gz"
+    FILTERED_R2="$FILTERED_DIR/${SAMPLE}_R2_filtered.fastq.gz"
+    HTML_REPORT="$FILTERED_DIR/${SAMPLE}_fastp.html"
+    JSON_REPORT="$FILTERED_DIR/${SAMPLE}_fastp.json"
+
+    # Run fastp for filtering and quality control
+    fastp -i $FASTQ_R1 -I $FASTQ_R2 \
+          -o $FILTERED_R1 -O $FILTERED_R2 \
+          -h $HTML_REPORT -j $JSON_REPORT \
+          -w 8  # Use 8 threads for fastp
+
+    # Output BAM file from STAR alignment
+    OUT_BAM="$ALIGN_DIR/${SAMPLE}_aligned.bam"
+
+    # Run STAR for alignment
+    STAR --runThreadN 24 \
+         --genomeDir $REF_GENOME_DIR \
+         --readFilesIn $FILTERED_R1 $FILTERED_R2 \
+         --outSAMtype BAM SortedByCoordinate \
+         --outFileNamePrefix $ALIGN_DIR/${SAMPLE}_ \
+         --outWigType wiggle \
+         --readFilesCommand zcat
+done
