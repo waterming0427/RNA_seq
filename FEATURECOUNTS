@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH -A pccr               # Allocation name
+#SBATCH -t 1:00:00            # Time limit
+#SBATCH -N 1                  # Number of nodes
+#SBATCH -n 4                  # Number of cores
+#SBATCH --job-name=featureCounts
+#SBATCH --mail-type=FAIL,BEGIN,END
+#SBATCH --error=%x-%J-%u.err
+#SBATCH --output=%x-%J-%u.out
+
+# Load necessary modules
+module --force purge
+ml biocontainers subread
+
+# Define input and output files
+BAM_DIR="/depot/edykhui/data/ming/rna_seq/aligned"  # Location of your BAM files
+GTF_FILE="/path/to/genome.gtf"                      # Update to the correct location of your GTF file
+OUTPUT_DIR="/depot/edykhui/data/2024reprocess"      # Output directory
+OUTPUT_FILE="$OUTPUT_DIR/featurecounts.txt"
+
+# Create output directory if not exists
+mkdir -p $OUTPUT_DIR
+
+# Run featureCounts
+featureCounts -s 2 -p -Q 10 -T 4 -a $GTF_FILE -o $OUTPUT_FILE $BAM_DIR/*.bam
