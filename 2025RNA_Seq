@@ -1,0 +1,113 @@
+####build star index first
+#!/bin/bash
+#SBATCH -A pccr
+#SBATCH -t 12:00:00
+#SBATCH -N 1
+#SBATCH -n 16
+#SBATCH --job-name=star_index
+#SBATCH --output=star_index-%j.out
+#SBATCH --error=star_index-%j.err
+
+module --force purge
+module load biocontainers
+module load star
+
+mkdir -p /depot/edykhui/data/ming/IU_RNAseq_2025/genome_index
+
+STAR --runThreadN 16 \
+     --runMode genomeGenerate \
+     --genomeDir /depot/edykhui/data/ming/IU_RNAseq_2025/genome_index \
+     --genomeFastaFiles /depot/edykhui/data/ming/IU_RNAseq_2025/genome_files/GRCh38.primary_assembly.genome.fa \
+     --sjdbGTFfile /depot/edykhui/data/ming/IU_RNAseq_2025/genome_files/gencode.v45.annotation.gtf \
+     --sjdbOverhang 150
+
+
+
+
+
+#run this to make a list of sample names:
+
+cd /depot/edykhui/data/IU_sequencing_april_2025/ILMN_2521_Dykhuizen_Purdue_EDpool_Apr2025
+
+ls T_*_R1_001.fastq.gz | sed 's/_R1_001.fastq.gz//' | sort > /depot/edykhui/data/ming/IU_RNAseq_2025/sample_list.txt
+
+#run one sample each time to avoid the memory issue
+
+
+#!/bin/bash
+#SBATCH -A pccr
+#SBATCH -t 4:00:00
+#SBATCH -N 1
+#SBATCH -n 16
+#SBATCH --mem=64G
+#SBATCH --array=0-11             # <-- Adjust this to number of samples - 1
+#SBATCH --job-name=star_array
+#SBATCH --output=star_array-%A_%a.out
+#SBATCH --error=star_array-%A_%a.err
+#SBATCH --mail-type=FAIL,BEGIN,END
+
+module --force purge
+ml biocontainers star/2.7.10a
+
+# Get sample name from the list
+SAMPLE=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" /depot/edykhui/data/ming/IU_RNAseq_2025/sample_list.txt)
+
+# Paths
+FASTQ_DIR=/depot/edykhui/data/IU_sequencing_april_2025/ILMN_2521_Dykhuizen_Purdue_EDpool_Apr2025
+STAR_INDEX=/depot/edykhui/data/ming/IU_RNAseq_2025/genome_index
+OUTPUT_DIR=/depot/edykhui/data/ming/IU_RNAseq_2025/star_align_array
+
+mkdir -p ${OUTPUT_DIR}/${SAMPLE}
+
+STAR --runThreadN 16 \
+     --limitBAMsortRAM 64000000000 \
+     --genomeDir $STAR_INDEX \
+     --readFilesIn ${FASTQ_DIR}/${SAMPLE}_R1_001.fastq.gz ${FASTQ_DIR}/${SAMPLE}_R2_001.fastq.gz \
+     --readFilesCommand zcat \
+     --outFileNamePrefix ${OUTPUT_DIR}/${SAMPLE}/${SAMPLE}_ \
+     --outSAMtype BAM SortedByCoordinate \
+     --outWigType wiggle read2
+
+
+
+
+     # generate the log/ start report:
+     for logfile in /depot/edykhui/data/ming/IU_RNAseq_2025/star_align_array/*/*Log.final.out
+do
+    sample=$(basename $(dirname $logfile))
+    echo -n "${sample} " 
+    awk 'NR==7 || NR==8 || NR==9 || NR==10 || NR==24 || NR==25 || NR==29 {printf "%s\t", $0} END{print ""}' $logfile
+done > /depot/edykhui/data/ming/IU_RNAseq_2025/star_align_array/star_mapping_summary.txt
+
+
+
+$run featurecounts as reversible
+
+#!/bin/bash
+#SBATCH -A pccr
+#SBATCH -t 04:00:00
+#SBATCH -N 1
+#SBATCH -n 8
+#SBATCH --mem=32G
+#SBATCH --job-name=featurecounts
+#SBATCH --mail-type=FAIL,BEGIN,END
+#SBATCH --output=featurecounts-%j.out
+#SBATCH --error=featurecounts-%j.err
+
+# Load Subread
+module --force purge
+ml biocontainers subread/2.0.1
+
+# Define paths
+GTF=/depot/edykhui/data/ming/IU_RNAseq_2025/genome_files/gencode.v45.annotation.gtf
+OUTDIR=/depot/edykhui/data/ming/IU_RNAseq_2025/featurecounts
+mkdir -p $OUTDIR
+
+# Get all BAM files
+BAMS=$(ls /depot/edykhui/data/ming/IU_RNAseq_2025/star_align_array/*/*.bam)
+
+# Run featureCounts
+featureCounts -T 8 -p -s 2 \
+  -a $GTF -o $OUTDIR/gene_counts.txt $BAMS
+
+
